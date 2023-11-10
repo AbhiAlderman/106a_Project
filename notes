@@ -1,0 +1,13 @@
+Vision Terminal Commands in Order
+
+
+open terminal and get roscore running
+
+get realsense running using following command 
+roslaunch realsense2_camera rs_camera.launch mode:=Manual color_width:=424
+color_height:=240 depth_width:=424 depth_height:=240 align_depth:=true
+depth_fps:=6 color_fps:=6
+
+run python vision script using: rosrun vision block_detector.py
+
+open rviz with: rviz rviz
