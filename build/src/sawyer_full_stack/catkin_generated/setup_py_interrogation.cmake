@@ -1,0 +1,7 @@
+set(sawyer_full_stack_SETUP_PY_SETUP_MODULE "setuptools")
+set(sawyer_full_stack_SETUP_PY_VERSION "0.0.0")
+set(sawyer_full_stack_SETUP_PY_SCRIPTS "")
+set(sawyer_full_stack_SETUP_PY_PACKAGES "paths;controllers;utils")
+set(sawyer_full_stack_SETUP_PY_PACKAGE_DIRS "src/paths;src/controllers;src/utils")
+set(sawyer_full_stack_SETUP_PY_MODULES "")
+set(sawyer_full_stack_SETUP_PY_MODULE_DIRS "")

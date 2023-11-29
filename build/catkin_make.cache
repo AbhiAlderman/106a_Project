@@ -1,2 +1,2 @@
-vision
+src/ar_track_alvar/ar_track_alvar:src/ar_track_alvar/ar_track_alvar_msgs:src/sawyer_full_stack
 -DCATKIN_DEVEL_PREFIX=/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/devel -DCMAKE_INSTALL_PREFIX=/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/install -G Unix Makefiles

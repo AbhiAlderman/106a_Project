@@ -8,6 +8,9 @@
 
 # modified environment variables
 export CMAKE_PREFIX_PATH="/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/devel:$CMAKE_PREFIX_PATH"
+export LD_LIBRARY_PATH="/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/devel/lib:$LD_LIBRARY_PATH"
+export PKG_CONFIG_PATH="/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/devel/lib/pkgconfig:$PKG_CONFIG_PATH"
 export PWD='/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/build'
+export PYTHONPATH="/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/devel/lib/python3/dist-packages:$PYTHONPATH"
 export ROSLISP_PACKAGE_DIRECTORIES="/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/devel/share/common-lisp:$ROSLISP_PACKAGE_DIRECTORIES"
 export ROS_PACKAGE_PATH="/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/src:$ROS_PACKAGE_PATH"
