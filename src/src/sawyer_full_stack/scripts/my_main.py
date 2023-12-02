@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """
-Starter script for 106a lab7. 
-Author: Chris Correa
+Based on main.py from lab7
 """
 import sys
 import argparse
@@ -75,7 +74,7 @@ def lookup_tag(tag_number):
     tag_pos = [getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')]
     return np.array(tag_pos)
 
-def get_trajectory(limb, kin, ik_solver, tag_pos, args):
+def get_trajectory(limb, kin, ik_solver, tag_pos):
     """
     Returns an appropriate robot trajectory for the specified task.  You should 
     be implementing the path functions in paths.py and call them here
@@ -90,8 +89,6 @@ def get_trajectory(limb, kin, ik_solver, tag_pos, args):
     -------
     :obj:`moveit_msgs.msg.RobotTrajectory`
     """
-    num_way = args.num_way
-    task = args.task
 
     tfBuffer = tf2_ros.Buffer()
     listener = tf2_ros.TransformListener(tfBuffer)
@@ -104,22 +101,13 @@ def get_trajectory(limb, kin, ik_solver, tag_pos, args):
     current_position = np.array([getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')])
     print("Current Position:", current_position)
 
-    if task == 'line':
-        target_pos = tag_pos[0]
-        target_pos[2] += 0.4 #linear path moves to a Z position above AR Tag.
-        print("TARGET POSITION:", target_pos)
-        trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=4)
-    elif task == 'circle':
-        target_pos = tag_pos[0]
-        target_pos[2] += 0.3
-        print("TARGET POSITION:", target_pos)
-        trajectory = CircularTrajectory(center_position=target_pos, radius=0.1, total_time=15)
+    target_pos = tag_pos[0]
+    target_pos[2] += 0.1 #linear path moves to a Z position above AR Tag.
+    print("TARGET POSITION:", target_pos)
+    trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=4)
 
-    else:
-        raise ValueError('task {} not recognized'.format(task))
-    
     path = MotionPath(limb, kin, ik_solver, trajectory)
-    return path.to_robot_trajectory(num_way, True)
+    return path.to_robot_trajectory(20, True)
 
 def get_controller(controller_name, limb, kin):
     """
@@ -216,80 +204,52 @@ def move_to_pos(limb, gripper, kin, ik_solver, pos):
     controller.execute_path(robot_trajectory)
     return 
 
-
-
 def main():
     """
-    Examples of how to run me:
-    python scripts/main.py --help <------This prints out all the help messages
-    and describes what each parameter is
-    python scripts/main.py -t line -ar_marker 3 -c torque --log
- 
-    You can also change the rate, timeout if you want
+    Main logic for project
     """
 
+    """
+        * Assuming some logic will be implemented here to allow for arguments to get parsed in
+    """
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-task', '-t', type=str, default='line', help=
-        'Options: line, circle.  Default: line'
-    )
     parser.add_argument('-ar_marker', '-ar', nargs='+', help=
         'Which AR marker to use.  Default: 1'
     )
-    parser.add_argument('-controller_name', '-c', type=str, default='moveit', 
-        help='Options: moveit, open_loop, pid.  Default: moveit'
-    )
-    parser.add_argument('-rate', type=int, default=200, help="""
-        This specifies how many ms between loops.  It is important to use a rate
-        and not a regular while loop because you want the loop to refresh at a
-        constant rate, otherwise you would have to tune your PD parameters if 
-        the loop runs slower / faster.  Default: 200"""
-    )
-    parser.add_argument('-timeout', type=int, default=None, help=
-        """after how many seconds should the controller terminate if it hasn\'t already.  
-        Default: None"""
-    )
-    parser.add_argument('-num_way', type=int, default=50, help=
-        'How many waypoints for the :obj:`moveit_msgs.msg.RobotTrajectory`.  Default: 300'
-    )
-    parser.add_argument('--log', action='store_true', help='plots controller performance')
     args = parser.parse_args()
-
 
     rospy.init_node('moveit_node')
     tuck()
-    right_gripper = robot_gripper.Gripper('right_gripper')
-    right_gripper.open()
+    gripper = robot_gripper.Gripper('right_gripper')
+    gripper.open()
     rospy.sleep(1.0)
-    right_gripper.close()
+    gripper.close()
     rospy.sleep(1.0)
-    
-    # this is used for sending commands (velocity, torque, etc) to the robot
-    #right_gripper_tip normally
-    #stp_022310TP99251_tip for amir robot
-    ik_solver = IK("base", "right_gripper_tip") 
-    limb = intera_interface.Limb("right")
-    #right_gripper = robot_gripper.Gripper('right_gripper')
-    print('Calibrating...')
-    right_gripper.calibrate()
-    rospy.sleep(2.0)
-    kin = sawyer_kinematics("right")
 
-    # Lookup the AR tag position.
+    """
+        Logic for AR tag position 
+    """
     print(args.ar_marker)
     tag_pos = [lookup_tag(marker) for marker in args.ar_marker]
     print(tag_pos)
-    # Get an appropriate RobotTrajectory for the task (circular, linear, or square)
-    # If the controller is a workspace controller, this should return a trajectory where the
-    # positions and velocities are workspace positions and velocities.  If the controller
-    # is a jointspace or torque controller, it should return a trajectory where the positions
-    # and velocities are the positions and velocities of each joint.
-    robot_trajectory = get_trajectory(limb, kin, ik_solver, tag_pos, args)
+    # this is used for sending commands (velocity, torque, etc) to the robot
+    #right_gripper_tip normally
+    #stp_022310TP99251_tip for amir robot
+    ik_solver = IK("base", "right_gripper_tip")
+    limb = intera_interface.Limb("right")
+    #right_gripper = robot_gripper.Gripper('right_gripper')
+    print('Calibrating...')
+    gripper.calibrate()
+    rospy.sleep(2.0)
+    kin = sawyer_kinematics("right")
+
+    robot_trajectory = get_trajectory(limb, kin, ik_solver, tag_pos)
 
     # This is a wrapper around MoveIt! for you to use.  We use MoveIt! to go to the start position
     # of the trajectory
     planner = PathPlanner('right_arm')
-    
+
     # By publishing the trajectory to the move_group/display_planned_path topic, you should 
     # be able to view it in RViz.  You will have to click the "loop animation" setting in 
     # the planned path section of MoveIt! in the menu on the left side of the screen.
@@ -299,42 +259,15 @@ def main():
     disp_traj.trajectory_start = RobotState()
     pub.publish(disp_traj)
 
-    # Move to the trajectory start position
     plan = planner.plan_to_joint_pos(robot_trajectory.joint_trajectory.points[0].positions)
-    if args.controller_name != "moveit":
-        plan = planner.retime_trajectory(plan, 0.3)
-    planner.execute_plan(plan[1])
-
-    if args.controller_name == "moveit":
-        try:
-            input('Press <Enter> to execute the trajectory using MOVEIT')
-        except KeyboardInterrupt:
-            sys.exit()
-        # Uses MoveIt! to execute the trajectory.
-        planner.execute_plan(robot_trajectory)
-    else:
-        controller = get_controller(args.controller_name, limb, kin)
-        try:
-            input('Press <Enter> to execute the trajectory using YOUR OWN controller')
-        except KeyboardInterrupt:
-            sys.exit()
-        # execute the path using your own controller.
-        done = controller.execute_path(
-            robot_trajectory, 
-            rate=args.rate, 
-            timeout=args.timeout, 
-            log=args.log
+    controller = get_controller("pid", limb, kin)
+    done = controller.execute_path(
+            robot_trajectory
         )
-        if not done:
-            print('Failed to move to position')
-            sys.exit(0)
+    if not done:
+        print('Failed to move to position')
+        sys.exit(0)
 
-    print("We have reached our end")
-    
-    pickup_object(limb, right_gripper, kin, ik_solver, tag_pos[0])
-    print("we picked up")
-    right_gripper.open()
-    
-
+    print("REACHED END")
 if __name__ == "__main__":
     main()
