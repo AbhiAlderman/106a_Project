@@ -458,6 +458,6 @@ class PIDJointVelocityController(Controller):
         d = np.dot(self.Kd, error_time)
 
 
-        controller_velocity = p + i + d + feedforward
+        controller_velocity =  + feedforward + p + i + d
 
         self._limb.set_joint_velocities(joint_array_to_dict(controller_velocity, self._limb))

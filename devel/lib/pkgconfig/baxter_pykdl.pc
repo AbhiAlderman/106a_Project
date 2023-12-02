@@ -1,0 +1,8 @@
+prefix=/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/devel
+
+Name: baxter_pykdl
+Description: Description of baxter_pykdl
+Version: 0.1.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: rospy geometry_msgs sensor_msgs urdfdom tf baxter_interface baxter_core_msgs intera_core_msgs intera_interface

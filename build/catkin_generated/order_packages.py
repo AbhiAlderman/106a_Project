@@ -2,4 +2,4 @@
 source_root_dir = '/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/src'
 whitelisted_packages = ''.split(';') if '' != '' else []
 blacklisted_packages = ''.split(';') if '' != '' else []
-underlay_workspaces = '/opt/ros/eecsbot_ws/devel;/opt/ros/noetic'.split(';') if '/opt/ros/eecsbot_ws/devel;/opt/ros/noetic' != '' else []
+underlay_workspaces = '/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/devel;/opt/ros/eecsbot_ws/devel;/opt/ros/noetic'.split(';') if '/home/cc/ee106a/fa23/class/ee106a-afw/106a_Project/devel;/opt/ros/eecsbot_ws/devel;/opt/ros/noetic' != '' else []

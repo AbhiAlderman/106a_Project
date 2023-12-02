@@ -19,7 +19,7 @@ from controllers.controllers import (
 from utils.utils import *
 
 from trac_ik_python.trac_ik import IK
-
+from intera_interface import gripper as robot_gripper
 import rospy
 import tf2_ros
 import intera_interface
@@ -135,14 +135,60 @@ def get_controller(controller_name, limb, kin):
     if controller_name == 'open_loop':
         controller = FeedforwardJointVelocityController(limb, kin)
     elif controller_name == 'pid':
-        Kp = 0.2 * np.array([0.4, 2, 1.7, 1.5, 2, 2, 3])
-        Kd = 0.01 * np.array([2, 1, 2, 0.5, 0.8, 0.8, 0.8])
-        Ki = 0.01 * np.array([1.4, 1.4, 1.4, 1, 0.6, 0.6, 0.6])
+        Kp = 0.7 * np.array([0.4, 2, 1.7, 1.5, 2, 2, 3])
+        Kd = 0.02 * np.array([2, 1, 2, 0.5, 0.8, 0.8, 0.8])
+        Ki = 0.02 * np.array([1.4, 1.4, 1.4, 1, 0.6, 0.6, 0.6])
         Kw = np.array([0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9])
         controller = PIDJointVelocityController(limb, kin, Kp, Ki, Kd, Kw)
     else:
         raise ValueError('Controller {} not recognized'.format(controller_name))
     return controller
+
+
+def pickup_object(limb, gripper, kin, ik_solver, tag_pos):
+    """
+    Moves the robot arm down to the AR tag, closes the gripper to pick up the object,
+    and then lifts it.
+
+    Parameters
+    ----------
+    limb : intera_interface.Limb
+        The robot's limb interface.
+    gripper : intera_interface.Gripper
+        The robot's gripper interface.
+    kin : sawyer_kinematics
+        Kinematics object for the Sawyer robot.
+    ik_solver : IK
+        Inverse Kinematics solver.
+    tag_pos : numpy.ndarray
+        Position of the AR tag.
+    """
+    target_pos = np.copy(tag_pos)
+    target_pos[2] -= 0.2  # lowers by 20cm
+
+    lower_trajectory = LinearTrajectory(start_position=tag_pos, goal_position=target_pos, total_time=2)
+    lower_path = MotionPath(limb, kin, ik_solver, lower_trajectory)
+    lower_robot_traj = lower_path.to_robot_trajectory(20, True)
+    controller = get_controller('pid', limb, kin)
+    controller.execute_path(lower_robot_traj)
+    print("GRIPPER IS READY == " + str(gripper.is_ready()))
+    # Close the gripper to pick up the object
+    if gripper.is_ready():
+        gripper.open()
+        rospy.sleep(2.0)
+        gripper.close()
+        rospy.sleep(2.0)
+    # Lift the object
+    lift_pos = np.copy(tag_pos)
+    lift_pos[2] += 0.2  # Lift by 20cm, adjust as needed
+    lift_trajectory = LinearTrajectory(start_position=target_pos, goal_position=lift_pos, total_time=2)
+    lift_path = MotionPath(limb, kin, ik_solver, lift_trajectory)
+    lift_robot_traj = lift_path.to_robot_trajectory(20, True)
+    controller.execute_path(lift_robot_traj)
+
+    return True
+
+
 
 
 def main():
@@ -154,6 +200,8 @@ def main():
  
     You can also change the rate, timeout if you want
     """
+
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-task', '-t', type=str, default='line', help=
         'Options: line, circle.  Default: line'
@@ -182,19 +230,27 @@ def main():
 
 
     rospy.init_node('moveit_node')
-    
     tuck()
+    right_gripper = robot_gripper.Gripper('right_gripper')
+    right_gripper.open()
+    rospy.sleep(1.0)
+    right_gripper.close()
+    rospy.sleep(1.0)
     
     # this is used for sending commands (velocity, torque, etc) to the robot
     #right_gripper_tip normally
     #stp_022310TP99251_tip for amir robot
     ik_solver = IK("base", "right_gripper_tip") 
     limb = intera_interface.Limb("right")
+    #right_gripper = robot_gripper.Gripper('right_gripper')
+    print('Calibrating...')
+    right_gripper.calibrate()
+    rospy.sleep(2.0)
     kin = sawyer_kinematics("right")
 
     # Lookup the AR tag position.
     tag_pos = [lookup_tag(marker) for marker in args.ar_marker]
-
+    print(tag_pos)
     # Get an appropriate RobotTrajectory for the task (circular, linear, or square)
     # If the controller is a workspace controller, this should return a trajectory where the
     # positions and velocities are workspace positions and velocities.  If the controller
@@ -244,6 +300,13 @@ def main():
         if not done:
             print('Failed to move to position')
             sys.exit(0)
+
+    print("We have reached our end")
+    
+    pickup_object(limb, right_gripper, kin, ik_solver, tag_pos[0])
+    print("we picked up")
+    right_gripper.open()
+    
 
 if __name__ == "__main__":
     main()
