@@ -74,7 +74,7 @@ def lookup_tag(tag_number):
     tag_pos = [getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')]
     return np.array(tag_pos)
 
-def get_trajectory(limb, kin, ik_solver, tag_pos):
+def get_trajectory(limb, kin, ik_solver, tag_pos, z_adjustment, path_time):
     """
     Returns an appropriate robot trajectory for the specified task.  You should 
     be implementing the path functions in paths.py and call them here
@@ -102,9 +102,9 @@ def get_trajectory(limb, kin, ik_solver, tag_pos):
     print("Current Position:", current_position)
 
     target_pos = tag_pos[0]
-    target_pos[2] += 0.1 #linear path moves to a Z position above AR Tag.
+    target_pos[2] += z_adjustment #linear path moves to a Z position above AR Tag.
     print("TARGET POSITION:", target_pos)
-    trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=4)
+    trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=path_time)
 
     path = MotionPath(limb, kin, ik_solver, trajectory)
     return path.to_robot_trajectory(20, True)
@@ -178,7 +178,7 @@ def pickup_object(limb, gripper, kin, ik_solver, tag_pos):
 
     return True
 
-def move_to_pos(limb, gripper, kin, ik_solver, pos):
+def move_to_pos(limb, gripper, kin, ik_solver, pos, z_adjustment, path_time):
     """
     Move robot arm to the desired position
     
@@ -195,14 +195,32 @@ def move_to_pos(limb, gripper, kin, ik_solver, pos):
     tag_pos : numpy.ndarray
         Position of the AR tag.
     """
-    target_pos = np.copy(pos)
-    #might need to make total time a parameter and calculate it??
-    trajectory = LinearTrajectory(start_position=pos, goal_position=target_pos, total_time=3)
-    path = MotionPath(limb, kin, ik_solver, trajectory)
-    robot_trajectory = path.to_robot_trajectory(20, True)
-    controller = get_controller('pid', limb, kin)
-    controller.execute_path(robot_trajectory)
-    return 
+    robot_trajectory = get_trajectory(limb, kin, ik_solver, pos, z_adjustment, path_time)
+
+    # This is a wrapper around MoveIt! for you to use.  We use MoveIt! to go to the start position
+    # of the trajectory
+    planner = PathPlanner('right_arm')
+
+    # By publishing the trajectory to the move_group/display_planned_path topic, you should 
+    # be able to view it in RViz.  You will have to click the "loop animation" setting in 
+    # the planned path section of MoveIt! in the menu on the left side of the screen.
+    pub = rospy.Publisher('move_group/display_planned_path', DisplayTrajectory, queue_size=10)
+    disp_traj = DisplayTrajectory()
+    disp_traj.trajectory.append(robot_trajectory)
+    disp_traj.trajectory_start = RobotState()
+    pub.publish(disp_traj)
+
+    plan = planner.plan_to_joint_pos(robot_trajectory.joint_trajectory.points[0].positions)
+    controller = get_controller("pid", limb, kin)
+    done = controller.execute_path(
+            robot_trajectory
+        )
+    if not done:
+        print('Failed to move to position')
+        sys.exit(0)
+
+    print("REACHED END")
+    return pos
 
 def main():
     """
@@ -230,9 +248,6 @@ def main():
     """
         Logic for AR tag position 
     """
-    print(args.ar_marker)
-    tag_pos = [lookup_tag(marker) for marker in args.ar_marker]
-    print(tag_pos)
     # this is used for sending commands (velocity, torque, etc) to the robot
     #right_gripper_tip normally
     #stp_022310TP99251_tip for amir robot
@@ -244,30 +259,22 @@ def main():
     rospy.sleep(2.0)
     kin = sawyer_kinematics("right")
 
-    robot_trajectory = get_trajectory(limb, kin, ik_solver, tag_pos)
+    print(args.ar_marker)
+    tag_pos = [lookup_tag(marker) for marker in args.ar_marker]
+    print(tag_pos)
+    goal_pos = [lookup_tag(marker) for marker in '1']
 
-    # This is a wrapper around MoveIt! for you to use.  We use MoveIt! to go to the start position
-    # of the trajectory
-    planner = PathPlanner('right_arm')
-
-    # By publishing the trajectory to the move_group/display_planned_path topic, you should 
-    # be able to view it in RViz.  You will have to click the "loop animation" setting in 
-    # the planned path section of MoveIt! in the menu on the left side of the screen.
-    pub = rospy.Publisher('move_group/display_planned_path', DisplayTrajectory, queue_size=10)
-    disp_traj = DisplayTrajectory()
-    disp_traj.trajectory.append(robot_trajectory)
-    disp_traj.trajectory_start = RobotState()
-    pub.publish(disp_traj)
-
-    plan = planner.plan_to_joint_pos(robot_trajectory.joint_trajectory.points[0].positions)
-    controller = get_controller("pid", limb, kin)
-    done = controller.execute_path(
-            robot_trajectory
-        )
-    if not done:
-        print('Failed to move to position')
-        sys.exit(0)
-
-    print("REACHED END")
+    last_pos = move_to_pos(limb, gripper, kin, ik_solver, tag_pos, 0.1, 3)
+    new_pos = last_pos
+    last_pos = move_to_pos(limb, gripper, kin, ik_solver, new_pos, -0.07, 0.8)
+    gripper.open()
+    rospy.sleep(2.0)
+    gripper.close()
+    rospy.sleep(2.0)
+    final_pos = last_pos
+    unused_pos = move_to_pos(limb, gripper, kin, ik_solver, final_pos, 0.4, 3)
+    last_pos = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.1, 4)
+    gripper.open()
+    rospy.sleep(2.0)
 if __name__ == "__main__":
     main()
