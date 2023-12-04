@@ -26,7 +26,7 @@ from moveit_msgs.msg import DisplayTrajectory, RobotState
 from sawyer_pykdl import sawyer_kinematics
 
 
-def tuck():
+def high_tuck():
     """
     Tuck the robot arm to the start position. Use with caution
     """
@@ -41,6 +41,14 @@ def tuck():
     else:
         print('Canceled. Not tucking the arm.')
 
+def low_tuck():
+    rospack = rospkg.RosPack()
+    path = rospack.get_path('sawyer_full_stack')
+    launch_path = path + '/launch/lower_sawyer_tuck.launch'
+    uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+    roslaunch.configure_logging(uuid)
+    launch = roslaunch.parent.ROSLaunchParent(uuid, [launch_path])
+    launch.start()
 
 def lookup_tag(tag_number):
     """
@@ -101,8 +109,9 @@ def get_trajectory(limb, kin, ik_solver, tag_pos, z_adjustment, path_time):
     current_position = np.array([getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')])
     print("Current Position:", current_position)
 
-    target_pos = tag_pos[0]
+    target_pos = np.copy(tag_pos[0])
     target_pos[2] += z_adjustment #linear path moves to a Z position above AR Tag.
+    target_pos[2] = max(target_pos[2], 0)
     print("TARGET POSITION:", target_pos)
     trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=path_time)
 
@@ -231,14 +240,8 @@ def main():
         * Assuming some logic will be implemented here to allow for arguments to get parsed in
     """
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-ar_marker', '-ar', nargs='+', help=
-        'Which AR marker to use.  Default: 1'
-    )
-    args = parser.parse_args()
-
     rospy.init_node('moveit_node')
-    tuck()
+    high_tuck()
     gripper = robot_gripper.Gripper('right_gripper')
     gripper.open()
     rospy.sleep(1.0)
@@ -258,23 +261,31 @@ def main():
     gripper.calibrate()
     rospy.sleep(2.0)
     kin = sawyer_kinematics("right")
-
-    print(args.ar_marker)
-    tag_pos = [lookup_tag(marker) for marker in args.ar_marker]
-    print(tag_pos)
-    goal_pos = [lookup_tag(marker) for marker in '1']
-
-    last_pos = move_to_pos(limb, gripper, kin, ik_solver, tag_pos, 0.1, 3)
-    new_pos = last_pos
-    last_pos = move_to_pos(limb, gripper, kin, ik_solver, new_pos, -0.07, 0.8)
-    gripper.open()
+    low_tuck()
     rospy.sleep(2.0)
-    gripper.close()
-    rospy.sleep(2.0)
-    final_pos = last_pos
-    unused_pos = move_to_pos(limb, gripper, kin, ik_solver, final_pos, 0.4, 3)
-    last_pos = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.1, 4)
-    gripper.open()
-    rospy.sleep(2.0)
+    goal_pos = [lookup_tag('0')]
+    pos_7 = [lookup_tag('7')]
+    pos_8 = [lookup_tag('8')]
+    pos_9 = [lookup_tag('9')]
+    tags = ['7', '8', '9']
+    for tag in tags:
+        tag_pos = [lookup_tag(tag)]
+        print("PICKING POSITION " + str(tag_pos))
+        above_tag = move_to_pos(limb, gripper, kin, ik_solver, tag_pos, 0.5, 5)
+        gripper.open()
+        rospy.sleep(0.5)
+        grab_tag = move_to_pos(limb, gripper, kin, ik_solver, tag_pos, 0, 5)
+        gripper.close()
+        rospy.sleep(0.5)
+        print("GOAL POSITION " + str(goal_pos))
+        above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.5, 5)
+        go_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.23, 5)
+        gripper.open()
+        rospy.sleep(0.5)
+        move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.5, 5)
+        low_tuck()
+        rospy.sleep(2)
+        goal_pos = [lookup_tag(tag)]
+    
 if __name__ == "__main__":
     main()
