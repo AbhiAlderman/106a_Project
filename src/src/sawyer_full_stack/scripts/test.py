@@ -17,8 +17,6 @@ from controllers.controllers import (
 )
 from utils.utils import *
 
-from ar_track_alvar_msgs.msg import AlvarMarkers
-from geometry_msgs.msg import Point, Twist
 from trac_ik_python.trac_ik import IK
 from intera_interface import gripper as robot_gripper
 import rospy
@@ -27,9 +25,7 @@ import intera_interface
 from moveit_msgs.msg import DisplayTrajectory, RobotState
 from sawyer_pykdl import sawyer_kinematics
 
-block_height = 0.038 #3.8 cm
-bottom_height = -0.02
-scanned_tags = []
+
 def high_tuck():
     """
     Tuck the robot arm to the start position. Use with caution
@@ -53,18 +49,6 @@ def low_tuck():
     roslaunch.configure_logging(uuid)
     launch = roslaunch.parent.ROSLaunchParent(uuid, [launch_path])
     launch.start()
-
-def scan_table():
-    global scanned_tags
-    def callback(data):
-        for marker in data.markers:
-            if marker.id not in scanned_tags:
-                scanned_tags.append(marker.id)
-                
-                print("FOUND TAG: " + str(marker.id)) 
-    sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, callback)
-    return
-    
 
 def lookup_tag(tag_number):
     """
@@ -96,10 +80,10 @@ def lookup_tag(tag_number):
         print("Retrying ...")
 
     tag_pos = [getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')]
-    tag_orientation = [getattr(trans.transform.rotation, dim) for dim in ('x', 'y', 'z', 'w')]
-    return np.array(tag_pos), tag_orientation
+    tag_ori = [getattr(trans.transform.rotation, dim) for dim in ('x', 'y', 'z','w')]
+    return np.array(tag_pos,tag_ori)
 
-def get_trajectory(limb, kin, ik_solver, tag_pos, tag_orientation, z_adjustment, path_time):
+def get_trajectory(limb, kin, ik_solver, tag_pos, z_adjustment, path_time):
     """
     Returns an appropriate robot trajectory for the specified task.  You should 
     be implementing the path functions in paths.py and call them here
@@ -124,16 +108,21 @@ def get_trajectory(limb, kin, ik_solver, tag_pos, tag_orientation, z_adjustment,
         print(e)
 
     current_position = np.array([getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')])
+    current_ori = np.array([getattr(trans.transform.rotation, dim) for dim in ('x', 'y', 'z','w')])
     print("Current Position:", current_position)
+    print("Current orientation:", current_ori)
+    current_position = np.array(current_position,current_ori)
 
+    target_ori = np.copy(tag_pos[3:6])
     target_pos = np.copy(tag_pos[0])
     target_pos[2] += z_adjustment #linear path moves to a Z position above AR Tag.
-    target_pos[2] = max(target_pos[2], bottom_height)
+    target_pos[2] = max(target_pos[2], 0)
+    target_pos = np.array(target_pos,target_ori)
     print("TARGET POSITION:", target_pos)
-    trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=path_time, target_orientation=tag_orientation)
+    trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=path_time)
 
     path = MotionPath(limb, kin, ik_solver, trajectory)
-    return path.to_robot_trajectory(10, True)
+    return path.to_robot_trajectory(20, True)
 
 def get_controller(controller_name, limb, kin):
     """
@@ -159,7 +148,52 @@ def get_controller(controller_name, limb, kin):
         raise ValueError('Controller {} not recognized'.format(controller_name))
     return controller
 
-def move_to_pos(limb, gripper, kin, ik_solver, pos, orientation, z_adjustment, path_time):
+
+def pickup_object(limb, gripper, kin, ik_solver, tag_pos):
+    """
+    Moves the robot arm down to the AR tag, closes the gripper to pick up the object,
+    and then lifts it.
+
+    Parameters
+    ----------
+    limb : intera_interface.Limb
+        The robot's limb interface.
+    gripper : intera_interface.Gripper
+        The robot's gripper interface.
+    kin : sawyer_kinematics
+        Kinematics object for the Sawyer robot.
+    ik_solver : IK
+        Inverse Kinematics solver.
+    tag_pos : numpy.ndarray
+        Position of the AR tag.
+    """
+    target_pos = np.copy(tag_pos)
+    target_pos[2] -= 0.2  # lowers by 20cm
+
+    lower_trajectory = LinearTrajectory(start_position=tag_pos, goal_position=target_pos, total_time=2)
+    lower_path = MotionPath(limb, kin, ik_solver, lower_trajectory)
+    lower_robot_traj = lower_path.to_robot_trajectory(20, True)
+    controller = get_controller('pid', limb, kin)
+    controller.execute_path(lower_robot_traj)
+    print("GRIPPER IS READY == " + str(gripper.is_ready()))
+    # Close the gripper to pick up the object
+    if gripper.is_ready():
+        gripper.open()
+        rospy.sleep(2.0)
+        gripper.close()
+        rospy.sleep(2.0)
+    # Lift the object
+    lift_pos = np.copy(tag_pos)
+    lift_pos[2] += 0.2  # lifts by 20cm
+    #might need to change the total time to make it slower/faster
+    lift_trajectory = LinearTrajectory(start_position=target_pos, goal_position=lift_pos, total_time=2)
+    lift_path = MotionPath(limb, kin, ik_solver, lift_trajectory)
+    lift_robot_traj = lift_path.to_robot_trajectory(20, True)
+    controller.execute_path(lift_robot_traj)
+
+    return True
+
+def move_to_pos(limb, gripper, kin, ik_solver, pos, z_adjustment, path_time):
     """
     Move robot arm to the desired position
     
@@ -176,7 +210,7 @@ def move_to_pos(limb, gripper, kin, ik_solver, pos, orientation, z_adjustment, p
     tag_pos : numpy.ndarray
         Position of the AR tag.
     """
-    robot_trajectory = get_trajectory(limb, kin, ik_solver, pos, orientation, z_adjustment, path_time)
+    robot_trajectory = get_trajectory(limb, kin, ik_solver, pos, z_adjustment, path_time)
 
     # This is a wrapper around MoveIt! for you to use.  We use MoveIt! to go to the start position
     # of the trajectory
@@ -235,53 +269,29 @@ def main():
     kin = sawyer_kinematics("right")
     low_tuck()
     rospy.sleep(2.0)
-    # scan_table()
-    # poses = []
-    # orientations = []
-    # for tag in scanned_tags:
-    #     pos, orientation = lookup_tag('10')
-    #     poses.append(pos)
-    #     orientations.append(orientation)
-
-    goal_pos = [pos]
-    goal_orientation = orientation
-    above_tag = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, np.array([0, 1, 0, 0]), 0.3, 5)
-    twist_above = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, 0.3, 3)
-    gripper.open()
-    rospy.sleep(0.5)
-    grab_tag = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, -0.02, 3)
-    gripper.close()
-    rospy.sleep(0.5)
-    back_up_twist = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, np.array([0, 1, 0, 0]), 0.5, 5)
-    gripper.open()
-    rospy.sleep(0.7)
-    # scan_table()
-    # rospy.sleep(10.0)
-    # print("SCANNED TAGS ARE: " + str(scanned_tags))
-
-    # goal_pos = [lookup_tag('0')]
-    # pos_7 = [lookup_tag('7')]
-    # pos_8 = [lookup_tag('8')]
-    # pos_9 = [lookup_tag('9')]
-    # tags = ['7', '8', '9']
-    # for tag in tags:
-    #     tag_pos = [lookup_tag(tag)]
-    #     print("PICKING POSITION " + str(tag_pos))
-    #     above_tag = move_to_pos(limb, gripper, kin, ik_solver, tag_pos, 0.5, 5)
-    #     gripper.open()
-    #     rospy.sleep(0.5)
-    #     grab_tag = move_to_pos(limb, gripper, kin, ik_solver, tag_pos, 0, 5)
-    #     gripper.close()
-    #     rospy.sleep(0.5)
-    #     print("GOAL POSITION " + str(goal_pos))
-    #     above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.5, 5)
-    #     go_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.23, 5)
-    #     gripper.open()
-    #     rospy.sleep(0.5)
-    #     move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.5, 5)
-    #     low_tuck()
-    #     rospy.sleep(2)
-    #     goal_pos = [lookup_tag(tag)]
+    goal_pos = [lookup_tag('0')]
+    pos_7 = [lookup_tag('7')]
+    pos_8 = [lookup_tag('8')]
+    pos_9 = [lookup_tag('9')]
+    tags = ['7', '8', '9']
+    for tag in tags:
+        tag_pos = [lookup_tag(tag)]
+        print("PICKING POSITION " + str(tag_pos))
+        above_tag = move_to_pos(limb, gripper, kin, ik_solver, tag_pos, 0.5, 5)
+        gripper.open()
+        rospy.sleep(0.5)
+        grab_tag = move_to_pos(limb, gripper, kin, ik_solver, tag_pos, 0, 5)
+        gripper.close()
+        rospy.sleep(0.5)
+        print("GOAL POSITION " + str(goal_pos))
+        above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.5, 5)
+        go_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.23, 5)
+        gripper.open()
+        rospy.sleep(0.5)
+        move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.5, 5)
+        low_tuck()
+        rospy.sleep(2)
+        goal_pos = [lookup_tag(tag)]
     
 if __name__ == "__main__":
     main()

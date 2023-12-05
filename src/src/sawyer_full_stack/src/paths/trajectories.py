@@ -5,6 +5,15 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from mpl_toolkits.mplot3d import Axes3D
 
+def quaternion_multiply(q1, q2):
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
+    w = w1 * w2 - x1 * x2 - y1 * y2 - z1*z2
+    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+    y = w1*y2 - x1*z2 + y1*w2 + z1*x2
+    z = w1 * z2 + x1 * y2 -y1 * x2 + z1 * w2
+    return np.array([w, x, y ,z])
+
 """
 Set of classes for defining SE(3) trajectories for the end effector of a robot 
 manipulator
@@ -150,7 +159,7 @@ class Trajectory:
             print("Saved animation to %s.gif" % trajectory_name)
 
 class LinearTrajectory(Trajectory):
-    def __init__(self, start_position, goal_position, total_time):
+    def __init__(self, start_position, goal_position, total_time, target_orientation):
 
         Trajectory.__init__(self, total_time)
         self.start_position = start_position
@@ -158,7 +167,16 @@ class LinearTrajectory(Trajectory):
         self.distance = self.goal_position - self.start_position
         self.acceleration = (self.distance * 4.0) / (self.total_time ** 2) # keep constant magnitude acceleration
         self.v_max = (self.total_time / 2.0) * self.acceleration # maximum velocity magnitude
-        self.desired_orientation = np.array([0, 1, 0, 0])
+        #self.desired_orientation = np.array([0, 1, 0, 0])
+        if (target_orientation[0] != 0 and target_orientation[1] != 1):
+            rotate = np.array([np.cos(np.pi/4), 0, 0, np.sin(np.pi/4)])
+            self.desired_orientation = quaternion_multiply(target_orientation, rotate)
+            self.desired_orientation[2] = 0
+            self.desired_orientation[3] = 0
+        else:
+            self.desired_orientation = target_orientation
+        print("GOAL POS IS: " + str(self.goal_position))
+        print("GOAL ORI IS: " + str(self.desired_orientation))
 
     def target_pose(self, time):
         """
