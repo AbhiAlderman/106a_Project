@@ -26,8 +26,9 @@ import tf2_ros
 import intera_interface
 from moveit_msgs.msg import DisplayTrajectory, RobotState
 from sawyer_pykdl import sawyer_kinematics
+from std_msgs.msg import Float64
 
-block_height = 0.038 #3.8 cm
+block_height = 0.04 #3.8 cm
 bottom_height = -0.02
 scanned_tags = []
 poses = []
@@ -90,13 +91,13 @@ def scan_table():
                     orientations.append(orientation)
     sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, callback)
     low_tuck()
-    rospy.sleep(15)
+    rospy.sleep(6)
     low_tuck_right()
-    rospy.sleep(15)
+    rospy.sleep(6)
     low_tuck()
-    rospy.sleep(15)
+    rospy.sleep(6)
     low_tuck_left()
-    rospy.sleep(15)
+    rospy.sleep(6)
     print("SCANNED TAGS ARE: " + str(scanned_tags))
     scan = False
     sub.unregister()
@@ -241,6 +242,11 @@ def move_to_pos(limb, gripper, kin, ik_solver, pos, orientation, z_adjustment, p
     print("REACHED END")
     return pos
 
+def reset_wrist():
+    wrist_publisher = rospy.Publisher('/robot/limb/right/tip_states', Float64, queue_size=10)
+    rospy.sleep(1)
+    reset_wrist = 0.0
+    wrist_publisher.publish(Float64(reset_wrist))
 def main():
     """
     Main logic for project
@@ -275,9 +281,10 @@ def main():
     print("POSES ARE: " + str(poses))
     print("ORIENTS ARE: " + str(orientations))
     goal_pos = poses[0]
-    goal_orientation = orientations[0]
-    i = 1
+    goal_orientation = np.array([0, 1, 0, 0])
+    i = 0
     while i < len(poses):
+        reset_wrist()
         block_pos = poses[i]
         block_orientation = orientations[i]
         #first pick up the new block
@@ -292,7 +299,7 @@ def main():
         #now go above the goal
         above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, np.array([0, 1, 0, 0]), 0.5, 7)
         twist_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, 0.3, 8)
-        on_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, block_height, 5)
+        on_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, i * block_height, 5)
         gripper.open()
         rospy.sleep(0.5)
         above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, 0.5, 5)
