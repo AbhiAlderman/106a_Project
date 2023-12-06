@@ -27,7 +27,7 @@ import intera_interface
 from moveit_msgs.msg import DisplayTrajectory, RobotState
 from sawyer_pykdl import sawyer_kinematics
 
-block_height = 0.26 #3.8 cm
+block_height = 0.038 #3.8 cm
 bottom_height = -0.02
 scanned_tags = []
 poses = []
@@ -82,20 +82,21 @@ def scan_table():
         if scan:
             for marker in data.markers:
                 if marker.id not in scanned_tags:
+                    print("FOUND TAG: " + str(marker.id)) 
                     scanned_tags.append(marker.id)
                     pos, orientation = lookup_tag(marker.id)
+                    pos[2] = bottom_height
                     poses.append(pos)
                     orientations.append(orientation)
-                    print("FOUND TAG: " + str(marker.id)) 
     sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, callback)
     low_tuck()
-    rospy.sleep(6)
+    rospy.sleep(15)
     low_tuck_right()
-    rospy.sleep(6)
+    rospy.sleep(15)
     low_tuck()
-    rospy.sleep(6)
+    rospy.sleep(15)
     low_tuck_left()
-    rospy.sleep(6)
+    rospy.sleep(15)
     print("SCANNED TAGS ARE: " + str(scanned_tags))
     scan = False
     sub.unregister()
@@ -124,7 +125,7 @@ def lookup_tag(tag_number):
         # TODO: lookup the transform and save it in trans
         # The rospy.Time(0) is the latest available 
         # The rospy.Duration(10.0) is the amount of time to wait for the transform to be available before throwing an exception
-        trans = tfBuffer.lookup_transform('base', f'ar_marker_{tag_number}', rospy.Time(0), rospy.Duration(10.0))
+        trans = tfBuffer.lookup_transform('base', f'ar_marker_{tag_number}', rospy.Time(0), rospy.Duration(5.0))
     except Exception as e:
         print(e)
         print("Retrying ...")
@@ -277,19 +278,20 @@ def main():
     goal_orientation = orientations[0]
     i = 1
     while i < len(poses):
-        low_tuck()
         block_pos = poses[i]
         block_orientation = orientations[i]
         #first pick up the new block
-        above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 0.3, 5) #move above the block
+        above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, np.array([0, 1, 0, 0]), 0.3, 7) #move above the block
+        twist_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 0.3, 8)
         gripper.open() #open the gripper
         rospy.sleep(0.5) 
-        on_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, bottom_height, 1.5)
+        on_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 0, 4)
         gripper.close()
         rospy.sleep(0.5)
-        above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 0.5, 3)
+        above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 0.5, 4)
         #now go above the goal
-        above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, 0.5, 5)
+        above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, np.array([0, 1, 0, 0]), 0.5, 7)
+        twist_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, 0.3, 8)
         on_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, block_height, 5)
         gripper.open()
         rospy.sleep(0.5)
