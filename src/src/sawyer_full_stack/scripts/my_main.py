@@ -27,9 +27,11 @@ import intera_interface
 from moveit_msgs.msg import DisplayTrajectory, RobotState
 from sawyer_pykdl import sawyer_kinematics
 
-block_height = 0.038 #3.8 cm
+block_height = 0.26 #3.8 cm
 bottom_height = -0.02
 scanned_tags = []
+poses = []
+orientations = []
 def high_tuck():
     """
     Tuck the robot arm to the start position. Use with caution
@@ -53,18 +55,50 @@ def low_tuck():
     roslaunch.configure_logging(uuid)
     launch = roslaunch.parent.ROSLaunchParent(uuid, [launch_path])
     launch.start()
+def low_tuck_right():
+    rospack = rospkg.RosPack()
+    path = rospack.get_path('sawyer_full_stack')
+    launch_path = path + '/launch/lower_sawyer_tuck_right.launch'
+    uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+    roslaunch.configure_logging(uuid)
+    launch = roslaunch.parent.ROSLaunchParent(uuid, [launch_path])
+    launch.start()
+
+def low_tuck_left():
+    rospack = rospkg.RosPack()
+    path = rospack.get_path('sawyer_full_stack')
+    launch_path = path + '/launch/lower_sawyer_tuck_left.launch'
+    uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+    roslaunch.configure_logging(uuid)
+    launch = roslaunch.parent.ROSLaunchParent(uuid, [launch_path])
+    launch.start()
 
 def scan_table():
     global scanned_tags
+    global poses
+    global orientations
+    scan = True
     def callback(data):
-        for marker in data.markers:
-            if marker.id not in scanned_tags:
-                scanned_tags.append(marker.id)
-                
-                print("FOUND TAG: " + str(marker.id)) 
+        if scan:
+            for marker in data.markers:
+                if marker.id not in scanned_tags:
+                    scanned_tags.append(marker.id)
+                    pos, orientation = lookup_tag(marker.id)
+                    poses.append(pos)
+                    orientations.append(orientation)
+                    print("FOUND TAG: " + str(marker.id)) 
     sub = rospy.Subscriber("/ar_pose_marker", AlvarMarkers, callback)
-    return
-    
+    low_tuck()
+    rospy.sleep(6)
+    low_tuck_right()
+    rospy.sleep(6)
+    low_tuck()
+    rospy.sleep(6)
+    low_tuck_left()
+    rospy.sleep(6)
+    print("SCANNED TAGS ARE: " + str(scanned_tags))
+    scan = False
+    sub.unregister()
 
 def lookup_tag(tag_number):
     """
@@ -117,6 +151,8 @@ def get_trajectory(limb, kin, ik_solver, tag_pos, tag_orientation, z_adjustment,
 
     tfBuffer = tf2_ros.Buffer()
     listener = tf2_ros.TransformListener(tfBuffer)
+    print("TARGET POSE IS: " + str(tag_pos))
+    print("TARGET ORIENT IS: " + str(tag_orientation))
 
     try:
         trans = tfBuffer.lookup_transform('base', 'right_hand', rospy.Time(0), rospy.Duration(10.0))
@@ -126,10 +162,11 @@ def get_trajectory(limb, kin, ik_solver, tag_pos, tag_orientation, z_adjustment,
     current_position = np.array([getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')])
     print("Current Position:", current_position)
 
-    target_pos = np.copy(tag_pos[0])
+    target_pos = np.copy(tag_pos)
     target_pos[2] += z_adjustment #linear path moves to a Z position above AR Tag.
     target_pos[2] = max(target_pos[2], bottom_height)
     print("TARGET POSITION:", target_pos)
+    print("TARGET HEIGHT == " + str(target_pos[2]))
     trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=path_time, target_orientation=tag_orientation)
 
     path = MotionPath(limb, kin, ik_solver, trajectory)
@@ -233,55 +270,34 @@ def main():
     gripper.calibrate()
     rospy.sleep(2.0)
     kin = sawyer_kinematics("right")
-    low_tuck()
-    rospy.sleep(2.0)
-    # scan_table()
-    # poses = []
-    # orientations = []
-    # for tag in scanned_tags:
-    #     pos, orientation = lookup_tag('10')
-    #     poses.append(pos)
-    #     orientations.append(orientation)
-
-    goal_pos = [pos]
-    goal_orientation = orientation
-    above_tag = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, np.array([0, 1, 0, 0]), 0.3, 5)
-    twist_above = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, 0.3, 3)
-    gripper.open()
-    rospy.sleep(0.5)
-    grab_tag = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, -0.02, 3)
-    gripper.close()
-    rospy.sleep(0.5)
-    back_up_twist = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, np.array([0, 1, 0, 0]), 0.5, 5)
-    gripper.open()
-    rospy.sleep(0.7)
-    # scan_table()
-    # rospy.sleep(10.0)
-    # print("SCANNED TAGS ARE: " + str(scanned_tags))
-
-    # goal_pos = [lookup_tag('0')]
-    # pos_7 = [lookup_tag('7')]
-    # pos_8 = [lookup_tag('8')]
-    # pos_9 = [lookup_tag('9')]
-    # tags = ['7', '8', '9']
-    # for tag in tags:
-    #     tag_pos = [lookup_tag(tag)]
-    #     print("PICKING POSITION " + str(tag_pos))
-    #     above_tag = move_to_pos(limb, gripper, kin, ik_solver, tag_pos, 0.5, 5)
-    #     gripper.open()
-    #     rospy.sleep(0.5)
-    #     grab_tag = move_to_pos(limb, gripper, kin, ik_solver, tag_pos, 0, 5)
-    #     gripper.close()
-    #     rospy.sleep(0.5)
-    #     print("GOAL POSITION " + str(goal_pos))
-    #     above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.5, 5)
-    #     go_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.23, 5)
-    #     gripper.open()
-    #     rospy.sleep(0.5)
-    #     move_to_pos(limb, gripper, kin, ik_solver, goal_pos, 0.5, 5)
-    #     low_tuck()
-    #     rospy.sleep(2)
-    #     goal_pos = [lookup_tag(tag)]
+    scan_table()
+    print("POSES ARE: " + str(poses))
+    print("ORIENTS ARE: " + str(orientations))
+    goal_pos = poses[0]
+    goal_orientation = orientations[0]
+    i = 1
+    while i < len(poses):
+        low_tuck()
+        block_pos = poses[i]
+        block_orientation = orientations[i]
+        #first pick up the new block
+        above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 0.3, 5) #move above the block
+        gripper.open() #open the gripper
+        rospy.sleep(0.5) 
+        on_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, bottom_height, 1.5)
+        gripper.close()
+        rospy.sleep(0.5)
+        above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 0.5, 3)
+        #now go above the goal
+        above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, 0.5, 5)
+        on_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, block_height, 5)
+        gripper.open()
+        rospy.sleep(0.5)
+        above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, 0.5, 5)
+        i += 1
+    #done stacking blocks
+    print("STACKED ALL BLOCKS")
+    high_tuck()
     
 if __name__ == "__main__":
     main()
