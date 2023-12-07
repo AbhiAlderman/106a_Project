@@ -249,10 +249,19 @@ def reset_wrist():
     reset_wrist = 0.0
     wrist_publisher.publish(Float64(reset_wrist))
 
-def is_aligned(actual_pos, actual_orientation, expected_pos, expected_orientation,tolerance= 0.025):
-    deviation_pos = np.linalg.norm(actual_pos-expected_pos)
-    deviation_orientation = np.linalg.norm(actual_orientation-expected_orientation)
-    return deviation_pos<= tolerance and deviation_orientation <= tolerance
+def is_aligned(actual_pos, expected_pos, tolerance= 0.0001):
+    x_error = actual_pos[0] - expected_pos[0]
+    y_error = actual_pos[1] - expected_pos[1]
+    print("X error is: " + str(x_error))
+    print("Y error is: " + str(y_error))
+    total_error = x_error**2 + y_error**2
+    print("Total Error is: " + str(total_error))
+    if total_error <= tolerance:
+        print("Aligned!")
+        return True
+    else:
+        print("Not aligned")
+        return False
 
 
 def main():
@@ -288,15 +297,16 @@ def main():
     scan_table()
     print("POSES ARE: " + str(poses))
     print("ORIENTS ARE: " + str(orientations))
+    straight_orientation = np.array([0, 1, 0, 0])
     goal_pos = poses[0]
-    goal_orientation = orientations[0]
-    i = 1
+    goal_orientation = straight_orientation
+    i = 0
     while i < len(poses):
         reset_wrist()
         block_pos = poses[i]
         block_orientation = orientations[i]
         #first pick up the new block
-        above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, np.array([0, 1, 0, 0]), 0.3, 7) #move above the block
+        above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, straight_orientation, 0.3, 7) #move above the block
         twist_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 0.3, 8)
         gripper.open() #open the gripper
         rospy.sleep(0.5) 
@@ -305,43 +315,46 @@ def main():
         rospy.sleep(0.5)
         above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 0.5, 4)
         #now go above the goal
-        above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, np.array([0, 1, 0, 0]), (i * block_height) + (3 * block_height), 7)
+        above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, straight_orientation, (i * block_height) + (3 * block_height), 7)
         twist_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, (i * block_height) + (block_height), 8)
         on_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, i * block_height, 5)
         gripper.open()
         rospy.sleep(0.5)
         above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, (i * block_height) + (block_height), 5)
         #now we need to check if this block was placed with the same orientation as the old block
-        if i < 7:
-            low_tuck()
-        else:
-            high_tuck()
-        
-        attempted_pos, attempted_orientation = lookup_tag(scanned_tags[i])
-        attempted_pos[2] = bottom_height
-        aligned = is_aligned(attempted_pos, attempted_orientation, goal_pos, goal_orientation)
-        while not aligned:
-            #reallign
-            print("BLOCK NOT ALIGNED")
-            above_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, np.array([0, 1, 0, 0]), (i * block_height) + (3 * block_height), 7)
-            on_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, i * block_height, 5)
-            gripper.close()
-            rospy.sleep(0.5)
-            above_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, np.array([0, 1, 0, 0]), (i * block_height) + (3 * block_height), 5)
-            twist_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, (i * block_height) + (block_height), 4)
-            on_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, i * block_height, 5)
-            gripper.open()
-            rospy.sleep(0.5)
-            above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, (i * block_height) + (block_height), 5)
+        if i > 0:
             if i < 7:
-                low_tuck()
+                low_tuck() #low tuck because tower is short
             else:
-                high_tuck()
+                high_tuck() #high tuck because tower ist all
+            #check if block is aligned with tower
             attempted_pos, attempted_orientation = lookup_tag(scanned_tags[i])
             attempted_pos[2] = bottom_height
             aligned = is_aligned(attempted_pos, attempted_orientation, goal_pos, goal_orientation)
-        goal_pos = attempted_pos
-        goal_orientation = attempted_orientation
+            while not aligned:
+                #reallign
+                print("REALIGNING BLOCK")
+                #go above the block, match orientation, grab it, and lift up
+                above_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, straight_orientation, (i * block_height) + (3 * block_height), 7)
+                twist_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, attempted_orientation, (i * block_height) + (3 * block_height), 7)
+                on_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, attempted_orientation, i * block_height, 5)
+                gripper.close()
+                rospy.sleep(0.5)
+                above_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, attempted_orientation, (i * block_height) + (3 * block_height), 5)
+                #try to match goal orientation and position, move block down, drop it, and lfit up
+                twist_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, (i * block_height) + (block_height), 4)
+                on_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, i * block_height, 5)
+                gripper.open()
+                rospy.sleep(0.5)
+                above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, (i * block_height) + (block_height), 5)
+                if i < 7:
+                    low_tuck() #low tuck because tower is short
+                else:
+                    high_tuck() #high tuck because tower ist all
+                #check if block is now aligned with tower
+                attempted_pos, attempted_orientation = lookup_tag(scanned_tags[i])
+                attempted_pos[2] = bottom_height
+                aligned = is_aligned(attempted_pos, goal_pos)
         i += 1
     #done stacking blocks
     print("STACKED ALL BLOCKS")
