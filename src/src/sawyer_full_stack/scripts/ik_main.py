@@ -3,10 +3,13 @@
 Based on main.py from lab7
 """
 import sys
-import argparse
 import numpy as np
 import rospkg
 import roslaunch
+from moveit_msgs.srv import GetPositionIK, GetPositionIKRequest, GetPositionIKResponse
+from moveit_commander import MoveGroupCommander
+import numpy as np
+import sys
 
 from paths.trajectories import LinearTrajectory, CircularTrajectory
 from paths.paths import MotionPath
@@ -18,14 +21,10 @@ from controllers.controllers import (
 from utils.utils import *
 
 from ar_track_alvar_msgs.msg import AlvarMarkers
-from geometry_msgs.msg import Point, Twist
-from trac_ik_python.trac_ik import IK
 from intera_interface import gripper as robot_gripper
 import rospy
 import tf2_ros
-import intera_interface
 from moveit_msgs.msg import DisplayTrajectory, RobotState
-from sawyer_pykdl import sawyer_kinematics
 from std_msgs.msg import Float64
 
 block_height = 0.04 #3.8 cm
@@ -243,6 +242,7 @@ def move_to_pos(limb, gripper, kin, ik_solver, pos, orientation, z_adjustment, p
     print("REACHED END")
     return pos
 
+    
 def reset_wrist():
     wrist_publisher = rospy.Publisher('/robot/limb/right/tip_states', Float64, queue_size=10)
     rospy.sleep(1)
@@ -285,47 +285,82 @@ def main():
     # this is used for sending commands (velocity, torque, etc) to the robot
     #right_gripper_tip normally
     #stp_022310TP99251_tip for amir robot
-    ik_solver = IK("base", "right_gripper_tip")
-    limb = intera_interface.Limb("right")
     #right_gripper = robot_gripper.Gripper('right_gripper')
     print('Calibrating...')
     gripper.calibrate()
     rospy.sleep(2.0)
-    kin = sawyer_kinematics("right")
     scan_table()
+
+    print('**************SCANN COMPLETE*******************')
     print("POSES ARE: " + str(poses))
     print("ORIENTS ARE: " + str(orientations))
     straight_orientation = np.array([0, 1, 0, 0])
     goal_pos = poses[0]
     goal_orientation = straight_orientation
     i = 1
+    def ik_move(position, orientation, z_adjustment):
+        posx = float(position[0])
+        posy = float(position[1])
+        posz = float(position[2] + z_adjustment)
+        orix = float(orientation[0])
+        oriy = float(orientation[1])
+        oriz = 0
+        oriw = 0
+        request.ik_request.pose_stamped.pose.position.x = posx
+        request.ik_request.pose_stamped.pose.position.y = posy
+        request.ik_request.pose_stamped.pose.position.z = posz      
+        request.ik_request.pose_stamped.pose.orientation.x = orix
+        request.ik_request.pose_stamped.pose.orientation.y = oriy
+        request.ik_request.pose_stamped.pose.orientation.z = oriz
+        request.ik_request.pose_stamped.pose.orientation.w = oriw
+        response = compute_ik(request)
+            
+        # Print the response HERE
+        print(response)
+        group = MoveGroupCommander("right_arm")
+
+        # Setting position and orientation target
+        group.set_pose_target(request.ik_request.pose_stamped)
+
+        # TRY THIS
+        # Setting just the position without specifying the orientation
+        #group.set_position_target([0.5, 0.5, 0.0])
+
+        # Plan IK
+        plan = group.plan()
+        group.execute(plan[1])
+    compute_ik = rospy.ServiceProxy('compute_ik', GetPositionIK)
     while i < len(poses):
+        request = GetPositionIKRequest()
+        request.ik_request.group_name = "right_arm"
+        link = "right_gripper_tip"
+        request.ik_request.ik_link_name = link
+        request.ik_request.pose_stamped.header.frame_id = "base"
         reset_wrist()
         block_pos = poses[i]
         block_orientation = orientations[i]
         #first pick up the new block
-        above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, straight_orientation, 2 * block_height, 7) #move above the block
-        twist_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 2 * block_height, 8)
-        gripper.open() #open the gripper
-        rospy.sleep(0.5) 
-        on_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, 0, 4)
-        gripper.close()
-        rospy.sleep(0.5)
-        above_block = move_to_pos(limb, gripper, kin, ik_solver, block_pos, block_orientation, (i * block_height) + (1.5 * block_height), 4)
-        #now go above the goal
-        above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, straight_orientation, (i * block_height) + (1.5 * block_height), 7)
-        twist_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, (i * block_height) + (block_height), 8)
-        on_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, i * block_height, 5)
+        ik_move(block_pos, straight_orientation, 2 * block_height)
         gripper.open()
-        rospy.sleep(0.5)
-        above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, (i * block_height) + (block_height), 5)
+        rospy.sleep(2)
+        ik_move(block_pos, block_orientation, 0)
+        gripper.close()
+        rospy.sleep(2)
+        ik_move(block_pos, block_orientation, 2 * block_height)
+        #now go above the goal
+        ik_move(goal_pos, straight_orientation, (i * block_height) + (1.5 * block_height))
+        ik_move(goal_pos, goal_orientation, (i * block_height) + (block_height))
+        ik_move(goal_pos, goal_orientation, i * block_height)
+        gripper.open()
+        rospy.sleep(2)
+        ik_move(goal_pos, goal_orientation, (i * block_height) + (block_height))
         #now we need to check if this block was placed with the same orientation as the old block
         if i < 7:
             low_tuck() #low tuck because tower is short
         else:
             high_tuck() #high tuck because tower ist all
         #check if block is aligned with tower
-        rospy.sleep(10)
+        rospy.sleep(4)
         attempted_pos, attempted_orientation = lookup_tag(scanned_tags[i])
         attempted_pos[2] = bottom_height
         aligned = is_aligned(attempted_pos, goal_pos)
@@ -333,18 +368,18 @@ def main():
             #reallign
             print("REALIGNING BLOCK")
             #go above the block, match orientation, grab it, and lift up
-            above_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, straight_orientation, (i * block_height) + (1.5 * block_height), 6)
-            twist_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, attempted_orientation, (i * block_height) + (1.5 * block_height), 6)
-            on_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, attempted_orientation, i * block_height, 5)
+            ik_move(goal_pos, straight_orientation, (i * block_height) + (1.5 * block_height))
+            ik_move(goal_pos, attempted_orientation, ((i * block_height) + (1.5 * block_height)))
+            ik_move(goal_pos, goal_orientation, i * block_height)
             gripper.close()
-            rospy.sleep(0.5)
-            above_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, attempted_orientation, (i * block_height) + (1.5 * block_height), 5)
+            rospy.sleep(2)
+            ik_move(goal_pos, attempted_orientation, (i * block_height) + (1.5 * block_height))
             #try to match goal orientation and position, move block down, drop it, and lfit up
-            twist_block = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, (i * block_height) + (block_height), 4)
-            on_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, i * block_height, 5)
+            ik_move(goal_pos, goal_orientation, (i * block_height) + (block_height))
+            ik_move(goal_pos, goal_orientation, i * block_height)
             gripper.open()
-            rospy.sleep(0.5)
-            above_goal = move_to_pos(limb, gripper, kin, ik_solver, goal_pos, goal_orientation, (i * block_height) + (block_height), 5)
+            rospy.sleep(2)
+            ik_move(goal_pos, goal_orientation, (i * block_height) + (block_height))
             if i < 7:
                 low_tuck() #low tuck because tower is short
             else:

@@ -285,19 +285,6 @@ gtest/fast:
 .PHONY : gtest/fast
 
 #=============================================================================
-# Target rules for targets named _catkin_empty_exported_target
-
-# Build rule for target.
-_catkin_empty_exported_target: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 _catkin_empty_exported_target
-.PHONY : _catkin_empty_exported_target
-
-# fast build rule for target.
-_catkin_empty_exported_target/fast:
-	$(MAKE) -f src/sawyer_full_stack/CMakeFiles/_catkin_empty_exported_target.dir/build.make src/sawyer_full_stack/CMakeFiles/_catkin_empty_exported_target.dir/build
-.PHONY : _catkin_empty_exported_target/fast
-
-#=============================================================================
 # Target rules for targets named _ar_track_alvar_msgs_generate_messages_check_deps_AlvarMarker
 
 # Build rule for target.
@@ -2325,6 +2312,19 @@ intera_motion_msgs_generate_messages_lisp/fast:
 	$(MAKE) -f src/baxter_pykdl/CMakeFiles/intera_motion_msgs_generate_messages_lisp.dir/build.make src/baxter_pykdl/CMakeFiles/intera_motion_msgs_generate_messages_lisp.dir/build
 .PHONY : intera_motion_msgs_generate_messages_lisp/fast
 
+#=============================================================================
+# Target rules for targets named _catkin_empty_exported_target
+
+# Build rule for target.
+_catkin_empty_exported_target: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 _catkin_empty_exported_target
+.PHONY : _catkin_empty_exported_target
+
+# fast build rule for target.
+_catkin_empty_exported_target/fast:
+	$(MAKE) -f src/sawyer_full_stack/CMakeFiles/_catkin_empty_exported_target.dir/build.make src/sawyer_full_stack/CMakeFiles/_catkin_empty_exported_target.dir/build
+.PHONY : _catkin_empty_exported_target/fast
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -2347,7 +2347,6 @@ help:
 	@echo "... gmock"
 	@echo "... gtest_main"
 	@echo "... gtest"
-	@echo "... _catkin_empty_exported_target"
 	@echo "... _ar_track_alvar_msgs_generate_messages_check_deps_AlvarMarker"
 	@echo "... std_msgs_generate_messages_eus"
 	@echo "... ar_track_alvar_msgs_gencpp"
@@ -2504,6 +2503,7 @@ help:
 	@echo "... intera_interface_gencfg"
 	@echo "... intera_motion_msgs_generate_messages_py"
 	@echo "... intera_motion_msgs_generate_messages_lisp"
+	@echo "... _catkin_empty_exported_target"
 .PHONY : help
 
 

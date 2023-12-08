@@ -24,6 +24,7 @@ def main():
         request.ik_request.pose_stamped.pose.orientation.z = 0.0
         request.ik_request.pose_stamped.pose.orientation.w = 0.0
         
+        
         try:
             # Send the request to the service
             response = compute_ik(request)

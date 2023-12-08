@@ -6,8 +6,8 @@ import matplotlib.animation as animation
 from mpl_toolkits.mplot3d import Axes3D
 
 def quaternion_multiply(q1, q2):
-    w1, x1, y1, z1 = q1
-    w2, x2, y2, z2 = q2
+    x1, y1, z1, w1 = q1
+    x2, y2, z2, w2 = q2
     w = w1 * w2 - x1 * x2 - y1 * y2 - z1*z2
     x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
     y = w1*y2 - x1*z2 + y1*w2 + z1*x2
@@ -167,9 +167,8 @@ class LinearTrajectory(Trajectory):
         self.distance = self.goal_position - self.start_position
         self.acceleration = (self.distance * 4.0) / (self.total_time ** 2) # keep constant magnitude acceleration
         self.v_max = (self.total_time / 2.0) * self.acceleration # maximum velocity magnitude
-        #self.desired_orientation = np.array([0, 1, 0, 0])
         if (target_orientation[0] != 0 and target_orientation[1] != 1):
-            rotate = np.array([np.cos(np.pi/4), 0, 0, np.sin(np.pi/4)])
+            rotate = np.array([0, 0, np.cos(np.pi/4), np.sin(np.pi/4)])
             self.desired_orientation = quaternion_multiply(target_orientation, rotate)
             self.desired_orientation[2] = 0
             self.desired_orientation[3] = 0
