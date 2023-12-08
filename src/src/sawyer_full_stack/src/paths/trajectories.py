@@ -3,16 +3,34 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import axes3d
 
-def quaternion_multiply(q1, q2):
-    x1, y1, z1, w1 = q1
-    x2, y2, z2, w2 = q2
-    w = w1 * w2 - x1 * x2 - y1 * y2 - z1*z2
-    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
-    y = w1*y2 - x1*z2 + y1*w2 + z1*x2
-    z = w1 * z2 + x1 * y2 -y1 * x2 + z1 * w2
-    return np.array([w, x, y ,z])
+
+def rotate_quaternion(quaternion):
+    """
+    Rotates a given quaternion by 45 degrees around the z-axis.
+
+    Parameters:
+    quaternion (array): The original quaternion in [x, y, z, w] format.
+
+    Returns:
+    array: The rotated quaternion.
+    """
+    # Quaternion for 45 degree rotation around the z-axis
+    theta = np.pi / 4  # 45 degrees in radians
+    rotation_quaternion = np.array([0, 0, np.sin(theta / 2), np.cos(theta / 2)])
+
+    # Quaternion multiplication
+    x1, y1, z1, w1 = quaternion
+    x2, y2, z2, w2 = rotation_quaternion
+
+    # Multiplying the original quaternion with the rotation quaternion
+    new_x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+    new_y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+    new_z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+    new_w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+
+    return np.array([new_x, new_y, new_z, new_w])
 
 """
 Set of classes for defining SE(3) trajectories for the end effector of a robot 
@@ -168,8 +186,7 @@ class LinearTrajectory(Trajectory):
         self.acceleration = (self.distance * 4.0) / (self.total_time ** 2) # keep constant magnitude acceleration
         self.v_max = (self.total_time / 2.0) * self.acceleration # maximum velocity magnitude
         if (target_orientation[0] != 0 and target_orientation[1] != 1):
-            rotate = np.array([0, 0, np.cos(np.pi/4), np.sin(np.pi/4)])
-            self.desired_orientation = quaternion_multiply(target_orientation, rotate)
+            self.desired_orientation = rotate_quaternion(target_orientation)
             self.desired_orientation[2] = 0
             self.desired_orientation[3] = 0
         else:
