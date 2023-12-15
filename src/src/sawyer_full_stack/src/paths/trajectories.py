@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import axes3d
 
 def rotate_quaternion(quaternion):
     """
-    Rotates a given quaternion by 45 degrees around the z-axis.
+    Rotates a given quaternion by 90 degrees around the z-axis.
 
     Parameters:
     quaternion (array): The original quaternion in [x, y, z, w] format.
@@ -16,8 +16,8 @@ def rotate_quaternion(quaternion):
     Returns:
     array: The rotated quaternion.
     """
-    # Quaternion for 45 degree rotation around the z-axis
-    theta = np.pi / 4  # 45 degrees in radians
+    # Quaternion for 90 degree rotation around the z-axis
+    theta = np.pi / 2  # 90 degrees in radians
     rotation_quaternion = np.array([0, 0, np.sin(theta / 2), np.cos(theta / 2)])
 
     # Quaternion multiplication
